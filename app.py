@@ -5,16 +5,14 @@ a patient's single-cell count matrix (or pick a bundled example), and shows
 the predicted probability of response together with which cell types the
 model paid attention to.
 """
-import json
 import os
 import pickle
 
 import gradio as gr
 import numpy as np
 import pandas as pd
-import torch
 
-from src.model import AttentionMIL
+from src.infer import load_weights, predict as mil_predict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ART = os.path.join(HERE, "artifacts")
@@ -24,11 +22,7 @@ os.chdir(HERE)  # so relative paths and Gradio's file cache work from any launch
 # ---------------------------------------------------------------- artifacts
 pca = pickle.load(open(os.path.join(ART, "pca.pkl"), "rb"))
 GENES = open(os.path.join(ART, "genes.txt")).read().split()
-_meta_path = os.path.join(ART, "model_meta.json")
-_meta = json.load(open(_meta_path)) if os.path.exists(_meta_path) else {"d_in": pca.n_components_}
-net = AttentionMIL(**_meta)
-net.load_state_dict(torch.load(os.path.join(ART, "model.pt"), map_location="cpu"))
-net.eval()
+WEIGHTS = load_weights(os.path.join(ART, "model.npz"))
 DEMO = os.path.exists(os.path.join(ART, "DEMO_WEIGHTS"))
 DIAGRAM = ""
 _svg = os.path.join(HERE, "diagram", "architecture.svg")
@@ -44,7 +38,9 @@ def predict(file):
     if file is None:
         raise gr.Error("Upload a CSV or choose an example patient first.")
     path = file if isinstance(file, str) else file.name
-    df = pd.read_csv(path, index_col=0)
+    header = pd.read_csv(path, nrows=0, index_col=0).columns
+    dtypes = {c: (str if c == "cell_type" else np.float32) for c in header}     # float32 halves memory vs the default
+    df = pd.read_csv(path, index_col=0, dtype=dtypes)
 
     cell_type = df.pop("cell_type") if "cell_type" in df else None
     totals = df.pop("total_counts").values if "total_counts" in df else None
@@ -54,16 +50,15 @@ def predict(file):
     if len(present) < 0.5 * len(GENES):
         raise gr.Error(f"Only {len(present)} of {len(GENES)} model genes found in the file. "
                        "Columns must be gene names from artifacts/genes.txt.")
-    counts = df.reindex(columns=GENES, fill_value=0).values.astype(np.float32)
+    counts = df.reindex(columns=GENES, fill_value=0).to_numpy(dtype=np.float32)
+    cell_ids, n_cells = df.index, len(df)
+    del df
     if totals is None:
         totals = counts.sum(1)
     totals = np.clip(np.asarray(totals, dtype=np.float32), 1, None)
 
     x = np.log1p(counts / totals[:, None] * 1e4)
-    z = torch.tensor(pca.transform(x), dtype=torch.float32)
-    with torch.no_grad():
-        p, att = net(z)
-    p, att = float(p), att.numpy()
+    p, att = mil_predict(WEIGHTS, pca.transform(x).astype(np.float32))
 
     # ---- probability card
     verdict = "Likely responder ✅" if p >= 0.5 else "Likely non-responder ⚠️"
@@ -78,7 +73,7 @@ def predict(file):
       <div class="bar"><div class="fill" style="width:{p*100:.1f}%;background:{color}"></div></div>
       <div class="verdict" style="color:{color}">{verdict}</div>
       <div class="stats">
-        <div><span>{len(df):,}</span>cells analysed</div>
+        <div><span>{n_cells:,}</span>cells analysed</div>
         <div><span>{len(present):,}</span>of {len(GENES):,} genes matched</div>
         <div><span>{missing}</span>genes filled with 0</div>
       </div>
@@ -98,7 +93,7 @@ def predict(file):
     # ---- top attended cells
     top = np.argsort(att)[::-1][:10]
     top_df = pd.DataFrame({
-        "cell": df.index[top],
+        "cell": cell_ids[top],
         "cell type": cell_type.values[top] if cell_type is not None else "?",
         "attention weight": np.round(att[top], 5),
     })

@@ -2,7 +2,8 @@
 
 Input : data/processed/dataset.h5ad, configs/default.yaml
 Output: results/oof_predictions.csv   out-of-fold probability per patient and repeat
-        artifacts/model.pt            final weights
+        artifacts/model.pt            final weights (torch)
+        artifacts/model.npz           same weights as numpy arrays, used by the app
         artifacts/pca.pkl             fitted PCA (needed to embed new patients)
         artifacts/genes.txt           the 2,000 gene names, in order
         artifacts/model_meta.json     layer sizes, so the app can rebuild the network
@@ -87,6 +88,7 @@ def main() -> None:
 
     print("[train] 4/4 save artifacts")
     torch.save(net.state_dict(), os.path.join(art, "model.pt"))
+    np.savez(os.path.join(art, "model.npz"), **{k: v.cpu().numpy().astype(np.float32) for k, v in net.state_dict().items()})
     pickle.dump(pca, open(os.path.join(art, "pca.pkl"), "wb"))
     open(os.path.join(art, "genes.txt"), "w").write("\n".join(adata.var_names))
     m = cfg["model"]
