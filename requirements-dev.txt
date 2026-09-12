@@ -1,0 +1,7 @@
+# Extra packages for the training pipeline (make data / train / evaluate / baseline).
+-r requirements.txt
+scanpy>=1.10
+anndata>=0.10
+h5py>=3.10
+pyyaml>=6
+huggingface_hub>=0.30

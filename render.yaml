@@ -1,0 +1,11 @@
+# Render.com blueprint: free web service running the Gradio app.
+services:
+  - type: web
+    name: cart-responder-classifier
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"

@@ -1,0 +1,6 @@
+# Runtime for the demo app (what Hugging Face Spaces installs).
+gradio>=6,<7
+torch>=2.2
+scikit-learn==1.9.1     # must match the version that pickled artifacts/pca.pkl
+pandas>=2.2
+numpy>=1.26
