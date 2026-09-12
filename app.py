@@ -188,7 +188,7 @@ with gr.Blocks(title="CAR-T Responder Classifier") as demo:
             top = gr.Dataframe(label="🏅 Ten most influential cells", interactive=False, wrap=True)
     with gr.Accordion("🧠 How the model works", open=True):
         gr.HTML(DIAGRAM + HOW)
-    gr.HTML("<div id='foot'>Attention-MIL on single-cell RNA-seq. Built with PyTorch and Gradio. Data: GEO GSE267097.</div>")
+    gr.HTML("<div id='foot'>Attention-MIL on single-cell RNA-seq. Trained with PyTorch, served with numpy and Gradio. Data: GEO GSE267097. Build: numpy-v2.</div>")
 
     run.click(predict, inputs=file_in, outputs=[card, plot, top])
     file_in.change(predict, inputs=file_in, outputs=[card, plot, top])
