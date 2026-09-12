@@ -24,6 +24,7 @@ pca = pickle.load(open(os.path.join(ART, "pca.pkl"), "rb"))
 GENES = open(os.path.join(ART, "genes.txt")).read().split()
 WEIGHTS = load_weights(os.path.join(ART, "model.npz"))
 DEMO = os.path.exists(os.path.join(ART, "DEMO_WEIGHTS"))
+TOP_TYPES = 10
 DIAGRAM = ""
 _svg = os.path.join(HERE, "diagram", "architecture.svg")
 if os.path.exists(_svg):
@@ -82,20 +83,18 @@ def predict(file):
     # ---- attention by cell type
     if cell_type is not None:
         share = pd.Series(att).groupby(cell_type.values).sum().sort_values(ascending=False)
-        freq = cell_type.value_counts(normalize=True).reindex(share.index)
-        plot_df = pd.DataFrame({"cell type": share.index,
-                                "attention share (%)": (share.values * 100).round(2),
-                                "cell frequency (%)": (freq.values * 100).round(2)})
+        if len(share) > TOP_TYPES:                       # keep the chart readable: top types + "other"
+            share = pd.concat([share.iloc[:TOP_TYPES], pd.Series({"other": share.iloc[TOP_TYPES:].sum()})])
+        plot_df = pd.DataFrame({"cell type": share.index, "attention share (%)": (share.values * 100).round(2)})
     else:
-        plot_df = pd.DataFrame({"cell type": ["(no cell_type column in file)"],
-                                "attention share (%)": [100.0], "cell frequency (%)": [100.0]})
+        plot_df = pd.DataFrame({"cell type": ["(no cell_type column in file)"], "attention share (%)": [100.0]})
 
     # ---- top attended cells
     top = np.argsort(att)[::-1][:10]
     top_df = pd.DataFrame({
         "cell": cell_ids[top],
         "cell type": cell_type.values[top] if cell_type is not None else "?",
-        "attention weight": np.round(att[top], 5),
+        "attention weight": [round(float(v), 5) for v in att[top]],
     })
     return card, plot_df, top_df
 
@@ -147,6 +146,10 @@ HERO = """
 IDLE = "<div class='card'><div class='idle'>🤖 Choose an example patient or upload a file to see a prediction.</div></div>"
 
 HOW = """
+<p class="note" style="margin-top:0">
+  Single-cell RNA-seq is the input. It is the lab measurement that reads gene activity in every individual
+  blood cell, so a patient becomes a table of thousands of cells by thousands of genes.
+</p>
 <div class="steps">
   <div class="step"><div class="n">STEP 1</div><b>🩸 Blood sample</b><span>Thousands of immune cells, each with about 20,000 gene activity values, measured before treatment.</span></div>
   <div class="step"><div class="n">STEP 2</div><b>📉 Compress</b><span>Keep 2,000 informative genes, normalise, and reduce every cell to 50 numbers with PCA.</span></div>
@@ -184,11 +187,12 @@ with gr.Blocks(title="CAR-T Responder Classifier") as demo:
         with gr.Column(scale=7, min_width=300):
             gr.HTML("<div class='section'>🎯 2. Result</div>")
             card = gr.HTML(IDLE)
-            plot = gr.BarPlot(x="cell type", y="attention share (%)", label="🔍 Attention by cell type", sort="-y", height=300)
+            plot = gr.BarPlot(x="cell type", y="attention share (%)", label="🔍 Attention by cell type", sort="-y",
+                              x_label_angle=-35, height=380)
             top = gr.Dataframe(label="🏅 Ten most influential cells", interactive=False, wrap=True)
     with gr.Accordion("🧠 How the model works", open=True):
         gr.HTML(DIAGRAM + HOW)
-    gr.HTML("<div id='foot'>Attention-MIL on single-cell RNA-seq. Trained with PyTorch, served with numpy and Gradio. Data: GEO GSE267097. Build: numpy-v2.</div>")
+    gr.HTML("<div id='foot'>Attention-MIL on single-cell RNA-seq. Trained with PyTorch, served with numpy and Gradio. Data: GEO GSE267097. Build: numpy-v3.</div>")
 
     run.click(predict, inputs=file_in, outputs=[card, plot, top])
     file_in.change(predict, inputs=file_in, outputs=[card, plot, top])
